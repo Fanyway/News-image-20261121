@@ -1,30 +1,44 @@
-// A working news-image-daily entry (Node 22, standard library only): its image
-// is the entry.png beside this file, and the program copies it to
-// /output/entry.png. The gate takes a whole PNG or JPEG of at most 1 MiB and
-// 1024 by 1024 pixels, and the judge sees exactly the bytes copied.
-//
-// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
-//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+// News front page, one-image entry.
+// This program takes the finished picture (entry.png, sitting next to this
+// file) and places a copy of it where the grader expects it: entry.png inside
+// the output directory. It uses only the Node 22 standard library.
 
-import { copyFileSync, existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { copyFileSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const here = fileURLToPath(new URL(".", import.meta.url));
-const src = join(here, "entry.png");
-const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
-const dest = join(outDir, "entry.png");
+function fail(message) {
+  console.error(message);
+  process.exit(1);
+}
 
-if (!existsSync(src)) {
-  console.error(`entry.png not found at ${src}`);
-  process.exit(1);
+// A real PNG always opens with these eight bytes.
+const PNG_HEADER = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+const here = dirname(fileURLToPath(import.meta.url));
+const picture = join(here, "entry.png");
+const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
+const outFile = join(outDir, "entry.png");
+
+let bytes;
+try {
+  bytes = readFileSync(picture);
+} catch {
+  fail(`Could not read the front-page image at ${picture}.`);
 }
-// Guard: entry.png must really be a PNG (8-byte signature), not a
-// misnamed or corrupted file, before it is copied to the output.
-const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const head = readFileSync(src).subarray(0, 8);
-if (!head.equals(PNG_SIGNATURE)) {
-  console.error(`entry.png at ${src} is not a PNG file (bad signature)`);
-  process.exit(1);
+
+if (!bytes.subarray(0, PNG_HEADER.length).equals(PNG_HEADER)) {
+  fail(`The file at ${picture} is not a PNG image: its first eight bytes are not the PNG signature, so it cannot be the front page.`);
 }
-copyFileSync(src, dest);
+
+// The gate takes at most one mebibyte, and an empty file is no picture at all.
+const ONE_MEBIBYTE = 1024 * 1024;
+if (bytes.length === 0) {
+  fail(`The front-page image at ${picture} is empty — there is nothing to copy.`);
+}
+if (bytes.length > ONE_MEBIBYTE) {
+  fail(`The front-page image at ${picture} is ${bytes.length} bytes, past the one-mebibyte limit, so it cannot be used as the entry.`);
+}
+
+copyFileSync(picture, outFile);
+console.log(`Front page written to ${outFile}.`);
